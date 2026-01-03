@@ -1,171 +1,45 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>3D Prototype - Deployment Ready</title>
-    <style>
-        body { margin: 0; overflow: hidden; background: #111; font-family: 'Courier New', monospace; }
-        #ui { position: absolute; top: 10px; left: 10px; color: #0f0; background: rgba(0,0,0,0.9); padding: 15px; border: 1px solid #0f0; z-index: 1000; }
-        #debug-console { position: absolute; bottom: 10px; left: 10px; color: #aaa; font-size: 11px; pointer-events: none; max-height: 120px; overflow: hidden; }
-    </style>
-</head>
-<body>
-    <div id="ui">
-        STATUS: <span id="log">INITIALIZING...</span><br>
-        <small id="sub-log">Checking Assets...</small>
-    </div>
-    <div id="debug-console"></div>
+loadEnvironment() {
+    const loader = new GLTFLoader();
+    
+    // RELATIVE PATH: This is the most compatible with GitHub Pages
+    const path = 'public/city.glb'; 
+    
+    debug(`Requesting City GLB from: ${path}`);
 
-    <script type="importmap">
-        {
-            "imports": {
-                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    // Create a fallback floor so you can see the player even if the city fails
+    const floor = new THREE.Mesh(
+        new THREE.PlaneGeometry(2000, 2000),
+        new THREE.MeshStandardMaterial({ color: 0x222222 })
+    );
+    floor.rotation.x = -Math.PI / 2;
+    this.scene.add(floor);
+
+    loader.load(path, 
+        (gltf) => {
+            debug("SUCCESS: City GLB Loaded.");
+            this.scene.remove(floor); // Remove fallback
+            this.scene.add(gltf.scene);
+            
+            const box = new THREE.Box3().setFromObject(gltf.scene);
+            const center = box.getCenter(new THREE.Vector3());
+            
+            // Positioning camera to see the city
+            this.camera.position.set(center.x, center.y + 200, center.z + 500);
+            this.camera.lookAt(center);
+            
+            document.getElementById('log').innerText = "READY";
+            document.getElementById('sub-log').innerText = "City Rendered";
+        },
+        (xhr) => {
+            if (xhr.total > 0) {
+                const p = Math.round((xhr.loaded / xhr.total) * 100);
+                document.getElementById('sub-log').innerText = `Downloading City: ${p}%`;
             }
+        },
+        (err) => {
+            debug(`STILL FAILED: 404 at ${path}`);
+            document.getElementById('log').innerText = "LOAD ERROR";
+            document.getElementById('sub-log').innerText = "Check Browser Console";
         }
-    </script>
-
-    <script type="module">
-        import * as THREE from 'three';
-        import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
-        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-
-        // SET THIS TO YOUR REPO NAME OR EMPTY STRING IF ROOT
-        const REPO_NAME = window.location.pathname.split('/')[1]; 
-        const BASE_PATH = `/${REPO_NAME}`;
-        const ASSET_BASE = 'https://raw.githubusercontent.com/bvdevAI/WTG11/main/assets';
-
-        function debug(msg) {
-            const consoleDiv = document.getElementById('debug-console');
-            consoleDiv.innerHTML = `> ${msg}<br>` + consoleDiv.innerHTML;
-            console.log(msg);
-        }
-
-        class Game {
-            constructor() {
-                this.scene = new THREE.Scene();
-                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 1, 10000);
-                this.renderer = new THREE.WebGLRenderer({ antialias: true });
-                this.clock = new THREE.Clock();
-                this.mixers = [];
-                this.enemies = [];
-                this.keys = {};
-                this.player = { mesh: null, actions: {}, mixer: null };
-
-                this.init();
-            }
-
-            init() {
-                this.renderer.setSize(window.innerWidth, window.innerHeight);
-                document.body.appendChild(this.renderer.domElement);
-                this.scene.background = new THREE.Color(0x1a1a1a);
-                
-                const light = new THREE.DirectionalLight(0xffffff, 1.5);
-                light.position.set(100, 200, 100);
-                this.scene.add(light, new THREE.AmbientLight(0xffffff, 0.8));
-
-                this.loadEnvironment();
-                this.loadPlayer();
-                this.loadEnemy();
-
-                window.addEventListener('keydown', e => this.keys[e.code] = true);
-                window.addEventListener('keyup', e => this.keys[e.code] = false);
-                this.animate();
-            }
-
-            loadEnvironment() {
-                const loader = new GLTFLoader();
-                // Dynamically handles /WTG11/public/city.glb or ./public/city.glb
-                const path = './public/city.glb'; 
-                debug(`Attempting load: ${path}`);
-
-                const floor = new THREE.Mesh(
-                    new THREE.PlaneGeometry(2000, 2000),
-                    new THREE.MeshStandardMaterial({ color: 0x222222 })
-                );
-                floor.rotation.x = -Math.PI / 2;
-                this.scene.add(floor);
-
-                loader.load(path, 
-                    (gltf) => {
-                        this.scene.remove(floor);
-                        this.scene.add(gltf.scene);
-                        const box = new THREE.Box3().setFromObject(gltf.scene);
-                        const center = box.getCenter(new THREE.Vector3());
-                        
-                        this.camera.position.set(center.x, center.y + 150, center.z + 450);
-                        this.camera.lookAt(center);
-                        
-                        document.getElementById('log').innerText = "READY";
-                        document.getElementById('sub-log').innerText = "City Loaded";
-                        debug("SUCCESS: Environment Rendered.");
-                    },
-                    (xhr) => {
-                        if (xhr.total > 0) {
-                            const p = Math.round((xhr.loaded / xhr.total) * 100);
-                            document.getElementById('sub-log').innerText = `Downloading City: ${p}%`;
-                        }
-                    },
-                    (err) => {
-                        debug(`ERROR: 404 at ${path}`);
-                        document.getElementById('log').innerText = "LOAD ERROR";
-                        document.getElementById('sub-log').innerText = "Using Fallback Floor";
-                    }
-                );
-            }
-
-            loadPlayer() {
-                const loader = new FBXLoader();
-                loader.load(`${ASSET_BASE}/Player/fastrun.fbx`, (fbx) => {
-                    this.player.mesh = fbx;
-                    fbx.scale.setScalar(0.12);
-                    this.scene.add(fbx);
-                    this.player.mixer = new THREE.AnimationMixer(fbx);
-                    this.player.actions.run = this.player.mixer.clipAction(fbx.animations[0]);
-                    this.mixers.push(this.player.mixer);
-                    debug("Player assets online.");
-                });
-            }
-
-            loadEnemy() {
-                const loader = new FBXLoader();
-                loader.load(`${ASSET_BASE}/Enemy/Run.fbx`, (fbx) => {
-                    fbx.position.set(100, 0, 100);
-                    fbx.scale.setScalar(0.12);
-                    this.scene.add(fbx);
-                    const m = new THREE.AnimationMixer(fbx);
-                    m.clipAction(fbx.animations[0]).play();
-                    this.enemies.push({ mesh: fbx, mixer: m });
-                    this.mixers.push(m);
-                    debug("Enemy assets online.");
-                });
-            }
-
-            animate() {
-                requestAnimationFrame(() => this.animate());
-                const dt = this.clock.getDelta();
-
-                if (this.player.mesh) {
-                    const speed = this.keys['ShiftLeft'] ? 1.5 : 0.6;
-                    let moved = false;
-                    if (this.keys['KeyW']) { this.player.mesh.translateZ(speed); moved = true; }
-                    if (this.keys['KeyS']) { this.player.mesh.translateZ(-speed); moved = true; }
-                    if (this.keys['KeyA']) this.player.mesh.rotateY(0.05);
-                    if (this.keys['KeyD']) this.player.mesh.rotateY(-0.05);
-
-                    if (moved) { if(!this.player.actions.run.isRunning()) this.player.actions.run.play(); }
-                    else if(this.player.actions.run) this.player.actions.run.stop();
-
-                    const camPos = new THREE.Vector3(0, 50, -100).applyMatrix4(this.player.mesh.matrixWorld);
-                    this.camera.position.lerp(camPos, 0.1);
-                    this.camera.lookAt(this.player.mesh.position.clone().add(new THREE.Vector3(0, 20, 0)));
-                }
-
-                this.mixers.forEach(m => m.update(dt));
-                this.renderer.render(this.scene, this.camera);
-            }
-        }
-        new Game();
-    </script>
-</body>
-</html>
+    );
+}
