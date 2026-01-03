@@ -2,17 +2,17 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>3D Prototype - Senior Engineer Rebuild</title>
+    <title>3D Prototype - Final Fix</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #050505; font-family: 'Courier New', monospace; }
-        #ui { position: absolute; top: 10px; left: 10px; color: #0f0; background: rgba(0,0,0,0.9); padding: 15px; border: 1px solid #0f0; z-index: 1000; pointer-events: none; }
-        #debug { position: absolute; bottom: 10px; left: 10px; color: #888; font-size: 11px; pointer-events: none; max-height: 120px; overflow: hidden; }
+        body { margin: 0; overflow: hidden; background: #050505; font-family: monospace; }
+        #ui { position: absolute; top: 10px; left: 10px; color: #0f0; background: rgba(0,0,0,0.8); padding: 15px; border: 1px solid #0f0; z-index: 1000; pointer-events: none; }
+        #debug { position: absolute; bottom: 10px; left: 10px; color: #888; font-size: 11px; pointer-events: none; max-height: 100px; overflow: hidden; }
     </style>
 </head>
 <body>
     <div id="ui">
-        STATUS: <span id="log">BOOTING...</span><br>
-        <small id="sub-log">Initializing Engine</small>
+        STATUS: <span id="log">INITIALIZING</span><br>
+        CITY: <span id="sub-log">Waiting...</span>
     </div>
     <div id="debug"></div>
 
@@ -30,12 +30,11 @@
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-        // AUTHORITATIVE ASSETS
+        // PATHS: Using dot-relative for GitHub Pages reliability
         const PATHS = {
-            CITY: './public/city.glb', // Relative to index.html
-            PLAYER_RUN: 'https://raw.githubusercontent.com/bvdevAI/WTG11/main/assets/Player/fastrun.fbx',
-            PLAYER_ATTACK: 'https://raw.githubusercontent.com/bvdevAI/WTG11/main/assets/Player/Combo%20Punch1.fbx',
-            ENEMY_RUN: 'https://raw.githubusercontent.com/bvdevAI/WTG11/main/assets/Enemy/Run.fbx'
+            CITY: './public/city.glb',
+            PLAYER: 'https://raw.githubusercontent.com/bvdevAI/WTG11/main/assets/Player/fastrun.fbx',
+            ENEMY: 'https://raw.githubusercontent.com/bvdevAI/WTG11/main/assets/Enemy/Run.fbx'
         };
 
         function report(msg) {
@@ -44,84 +43,85 @@
             console.log(msg);
         }
 
-        class GamePrototype {
+        class Game {
             constructor() {
                 this.scene = new THREE.Scene();
-                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 1, 20000);
+                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 1, 15000);
                 this.renderer = new THREE.WebGLRenderer({ antialias: true });
                 this.clock = new THREE.Clock();
                 this.mixers = [];
                 this.enemies = [];
                 this.keys = {};
-                this.player = { mesh: null, actions: {}, mixer: null, isAttacking: false };
+                this.player = { mesh: null, actions: {}, mixer: null };
 
                 this.init();
             }
 
             init() {
                 this.renderer.setSize(window.innerWidth, window.innerHeight);
-                this.renderer.setPixelRatio(window.devicePixelRatio);
                 document.body.appendChild(this.renderer.domElement);
-                this.scene.background = new THREE.Color(0x0a0a0a);
+                this.scene.background = new THREE.Color(0x111111);
                 
-                // Lighting
-                this.scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+                // Lights
+                this.scene.add(new THREE.AmbientLight(0xffffff, 1.0));
                 const sun = new THREE.DirectionalLight(0xffffff, 1.2);
-                sun.position.set(100, 500, 100);
+                sun.position.set(100, 300, 100);
                 this.scene.add(sun);
 
-                // Immediate Render Helper (Prove engine is alive)
-                const grid = new THREE.GridHelper(5000, 100, 0x00ff00, 0x222222);
-                this.scene.add(grid);
+                // Grid (Instantly proves the code works)
+                this.scene.add(new THREE.GridHelper(2000, 50, 0x00ff00, 0x444444));
+                report("System: Engine Running. Loading assets...");
 
-                this.loadAssets();
-                this.bindInput();
+                this.loadEnvironment();
+                this.loadPlayer();
+                this.loadEnemy();
+
+                window.addEventListener('keydown', e => this.keys[e.code] = true);
+                window.addEventListener('keyup', e => this.keys[e.code] = false);
                 this.animate();
             }
 
-            loadAssets() {
-                const gltfLoader = new GLTFLoader();
-                const fbxLoader = new FBXLoader();
+            loadEnvironment() {
+                const loader = new GLTFLoader();
+                report(`Requesting: ${PATHS.CITY}`);
 
-                // 1. Environment
-                report(`Attempting City: ${PATHS.CITY}`);
-                gltfLoader.load(PATHS.CITY, (gltf) => {
+                loader.load(PATHS.CITY, (gltf) => {
                     this.scene.add(gltf.scene);
                     const box = new THREE.Box3().setFromObject(gltf.scene);
                     const center = box.getCenter(new THREE.Vector3());
-                    this.camera.position.set(center.x, center.y + 200, center.z + 500);
+                    this.camera.position.set(center.x, center.y + 150, center.z + 400);
                     this.camera.lookAt(center);
                     document.getElementById('log').innerText = "READY";
-                    report("SUCCESS: Environment Rendered.");
+                    report("SUCCESS: City Rendered.");
                 }, (xhr) => {
-                    const p = Math.round((xhr.loaded / (xhr.total || 50000000)) * 100);
-                    document.getElementById('sub-log').innerText = `Downloading City: ${p}%`;
+                    if (xhr.total > 0) {
+                        const p = Math.round((xhr.loaded / xhr.total) * 100);
+                        document.getElementById('sub-log').innerText = `${p}%`;
+                    }
                 }, (err) => {
-                    report(`404: City not found at ${PATHS.CITY}`);
-                    document.getElementById('log').innerText = "ENV ERROR";
+                    report("ERROR: Check that city.glb is inside a folder named 'public'.");
+                    document.getElementById('log').innerText = "LOAD ERROR";
                 });
+            }
 
-                // 2. Player
-                fbxLoader.load(PATHS.PLAYER_RUN, (fbx) => {
+            loadPlayer() {
+                const loader = new FBXLoader();
+                loader.load(PATHS.PLAYER, (fbx) => {
                     this.player.mesh = fbx;
-                    fbx.scale.setScalar(0.15);
+                    fbx.scale.setScalar(0.12);
                     this.scene.add(fbx);
                     this.player.mixer = new THREE.AnimationMixer(fbx);
                     this.player.actions.run = this.player.mixer.clipAction(fbx.animations[0]);
                     this.mixers.push(this.player.mixer);
-                    report("SUCCESS: Player Mesh Loaded.");
-                    
-                    // Attack Anim
-                    fbxLoader.load(PATHS.PLAYER_ATTACK, (anim) => {
-                        this.player.actions.attack = this.player.mixer.clipAction(anim.animations[0]);
-                        report("SUCCESS: Combat System Armed.");
-                    });
+                    report("SUCCESS: Player Mesh Online.");
                 });
+            }
 
-                // 3. Enemy
-                fbxLoader.load(PATHS.ENEMY_RUN, (fbx) => {
-                    fbx.position.set(150, 0, 150);
-                    fbx.scale.setScalar(0.15);
+            loadEnemy() {
+                const loader = new FBXLoader();
+                loader.load(PATHS.ENEMY, (fbx) => {
+                    fbx.position.set(100, 0, 100);
+                    fbx.scale.setScalar(0.12);
                     this.scene.add(fbx);
                     const m = new THREE.AnimationMixer(fbx);
                     m.clipAction(fbx.animations[0]).play();
@@ -131,37 +131,12 @@
                 });
             }
 
-            bindInput() {
-                window.addEventListener('keydown', e => this.keys[e.code] = true);
-                window.addEventListener('keyup', e => this.keys[e.code] = false);
-                window.addEventListener('keydown', e => { if(e.code === 'Space') this.attack(); });
-            }
-
-            attack() {
-                if (this.player.isAttacking || !this.player.mesh) return;
-                this.player.isAttacking = true;
-                if(this.player.actions.attack) this.player.actions.attack.reset().setLoop(THREE.LoopOnce).play();
-
-                // Combat Logic
-                const ray = new THREE.Raycaster(this.player.mesh.position, 
-                    new THREE.Vector3(0,0,1).applyQuaternion(this.player.mesh.quaternion), 0, 20);
-                const hits = ray.intersectObjects(this.enemies.map(e => e.mesh), true);
-                if (hits.length > 0) {
-                    let target = hits[0].object;
-                    while(target.parent && target.parent !== this.scene) target = target.parent;
-                    this.scene.remove(target);
-                    this.enemies = this.enemies.filter(e => e.mesh !== target);
-                    report("COMBAT: Target Eliminated.");
-                }
-                setTimeout(() => this.player.isAttacking = false, 800);
-            }
-
             animate() {
                 requestAnimationFrame(() => this.animate());
                 const dt = this.clock.getDelta();
 
-                if (this.player.mesh && !this.player.isAttacking) {
-                    const speed = this.keys['ShiftLeft'] ? 1.8 : 0.8;
+                if (this.player.mesh) {
+                    const speed = this.keys['ShiftLeft'] ? 1.5 : 0.6;
                     let moved = false;
                     if (this.keys['KeyW']) { this.player.mesh.translateZ(speed); moved = true; }
                     if (this.keys['KeyS']) { this.player.mesh.translateZ(-speed); moved = true; }
@@ -171,16 +146,16 @@
                     if (moved) { if(!this.player.actions.run.isRunning()) this.player.actions.run.play(); }
                     else if(this.player.actions.run) this.player.actions.run.stop();
 
-                    const camOffset = new THREE.Vector3(0, 60, -130).applyMatrix4(this.player.mesh.matrixWorld);
-                    this.camera.position.lerp(camOffset, 0.1);
-                    this.camera.lookAt(this.player.mesh.position.clone().add(new THREE.Vector3(0, 25, 0)));
+                    const camPos = new THREE.Vector3(0, 50, -120).applyMatrix4(this.player.mesh.matrixWorld);
+                    this.camera.position.lerp(camPos, 0.1);
+                    this.camera.lookAt(this.player.mesh.position.clone().add(new THREE.Vector3(0, 20, 0)));
                 }
 
                 this.mixers.forEach(m => m.update(dt));
                 this.renderer.render(this.scene, this.camera);
             }
         }
-        new GamePrototype();
+        new Game();
     </script>
 </body>
 </html>
