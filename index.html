@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>3D City - Relative Path Build</title>
+    <title>3D City - Raw Content Build</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: monospace; }
         #ui { position: absolute; top: 10px; left: 10px; color: #0f0; background: rgba(0,0,0,0.9); padding: 15px; border: 1px solid #0f0; z-index: 1000; pointer-events: none; }
@@ -12,7 +12,7 @@
 <body>
     <div id="ui">
         ENV: <span id="log">PROCEDURAL ACTIVE</span><br>
-        PLAYER: <span id="p-status">ATTEMPTING LOAD...</span>
+        PLAYER: <span id="p-status">FETCHING RAW...</span>
     </div>
     <div id="debug"></div>
 
@@ -29,11 +29,14 @@
         import * as THREE from 'three';
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 
-        // RELATIVE PATHS (Works best for GitHub Pages)
+        // AUTHORITATIVE RAW GITHUB CONTENT LINKS
+        // These bypass the standard GitHub Pages 404/Security blocks
+        const RAW_BASE = 'https://raw.githubusercontent.com/bvdevAI/WTG11/main/assets';
+        
         const ASSETS = {
-            PLAYER_RUN: './assets/Fast%20Run.fbx',
-            PLAYER_PUNCH: './assets/Combo%20Punch%20(1).fbx',
-            ENEMY_RUN: './assets/Running.fbx'
+            PLAYER_RUN: `${RAW_BASE}/Fast%20Run.fbx`,
+            PLAYER_PUNCH: `${RAW_BASE}/Combo%20Punch%20(1).fbx`,
+            ENEMY_RUN: `${RAW_BASE}/Running.fbx`
         };
 
         function report(msg) {
@@ -66,7 +69,7 @@
                 sun.position.set(100, 500, 100);
                 this.scene.add(sun);
 
-                // Fail-safe Grid (Confirmed working in your screenshots)
+                // Verify engine with the grid seen in your image_417f87.png
                 this.scene.add(new THREE.GridHelper(5000, 100, 0x00ff00, 0x222222));
 
                 this.createCity();
@@ -80,7 +83,7 @@
             }
 
             createCity() {
-                // Ground
+                // Procedural Buildings from your image_41d695.png
                 const ground = new THREE.Mesh(
                     new THREE.PlaneGeometry(5000, 5000),
                     new THREE.MeshStandardMaterial({ color: 0x111111 })
@@ -88,7 +91,6 @@
                 ground.rotation.x = -Math.PI / 2;
                 this.scene.add(ground);
 
-                // Buildings (The cubes from your screenshot)
                 const boxGeo = new THREE.BoxGeometry(1, 1, 1);
                 for (let i = 0; i < 60; i++) {
                     const material = new THREE.MeshStandardMaterial({ 
@@ -103,16 +105,19 @@
             }
 
             loadPlayer() {
-                // Show the RED CUBE while loading
+                // Red cube placeholder while the heavy raw data downloads
                 const box = new THREE.Mesh(new THREE.BoxGeometry(12,24,12), new THREE.MeshStandardMaterial({color: 0xff0000}));
                 this.player.mesh = box;
                 this.scene.add(box);
 
                 const loader = new FBXLoader();
-                report(`Attempting relative load: ${ASSETS.PLAYER_RUN}`);
+                // ESSENTIAL: Set crossOrigin to anonymous for raw.githubusercontent
+                loader.setCrossOrigin('anonymous');
+                
+                report(`Requesting Raw Binary: ${ASSETS.PLAYER_RUN}`);
 
                 loader.load(ASSETS.PLAYER_RUN, (fbx) => {
-                    this.scene.remove(box); // Kill the red cube
+                    this.scene.remove(box); 
                     this.player.mesh = fbx;
                     fbx.scale.setScalar(0.15);
                     this.scene.add(fbx);
@@ -121,20 +126,25 @@
                     this.player.actions.run = this.player.mixer.clipAction(fbx.animations[0]);
                     this.mixers.push(this.player.mixer);
                     
-                    document.getElementById('p-status').innerText = "PLAYER ONLINE";
-                    report("SUCCESS: Player Mesh switched from Cube to FBX.");
+                    document.getElementById('p-status').innerText = "RAW DATA RENDERED";
+                    report("SUCCESS: FBX override successful.");
                     
-                    // Attack Anim
                     loader.load(ASSETS.PLAYER_PUNCH, (anim) => {
                         this.player.actions.attack = this.player.mixer.clipAction(anim.animations[0]);
                     });
-                }, undefined, (err) => {
-                    report("RELATIVE LOAD FAILED. Browser security is blocking local assets.");
+                }, (xhr) => {
+                    if (xhr.lengthComputable) {
+                        const p = Math.round((xhr.loaded / xhr.total) * 100);
+                        document.getElementById('p-status').innerText = `DL: ${p}%`;
+                    }
+                }, (err) => {
+                    report("FAIL: Raw Link security check failed.");
                 });
             }
 
             loadEnemy() {
                 const loader = new FBXLoader();
+                loader.setCrossOrigin('anonymous');
                 loader.load(ASSETS.ENEMY_RUN, (fbx) => {
                     fbx.position.set(150, 0, 150);
                     fbx.scale.setScalar(0.15);
