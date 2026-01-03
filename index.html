@@ -2,17 +2,19 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>3D Browser Game Prototype - Deployment Fix</title>
+    <title>3D Prototype - Absolute Path Fix</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: monospace; }
-        #ui { position: absolute; top: 10px; left: 10px; color: #0f0; background: rgba(0,0,0,0.8); padding: 10px; border: 1px solid #0f0; pointer-events: none; z-index: 100; }
+        body { margin: 0; overflow: hidden; background: #111; font-family: 'Courier New', monospace; }
+        #ui { position: absolute; top: 10px; left: 10px; color: #0f0; background: rgba(0,0,0,0.9); padding: 15px; border: 1px solid #0f0; z-index: 1000; }
+        #debug-console { position: absolute; bottom: 10px; left: 10px; color: #aaa; font-size: 12px; pointer-events: none; }
     </style>
 </head>
 <body>
     <div id="ui">
-        STATUS: <span id="log">INITIALIZING...</span><br>
-        WASD: MOVE | SHIFT: RUN | SPACE: ATTACK
+        STATUS: <span id="log">BOOTING...</span><br>
+        <small id="sub-log">Checking Assets...</small>
     </div>
+    <div id="debug-console"></div>
 
     <script type="importmap">
         {
@@ -28,119 +30,102 @@
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-        const REPO_ASSETS = 'https://raw.githubusercontent.com/bvdevAI/WTG11/main/assets';
-        // Absolute path for GitHub Pages sub-directory reliability
-        const CITY_MODEL_PATH = '/WTG11/public/city.glb'; 
-        
+        // GITHUB PAGES PATHING
+        const REPO_NAME = '/WTG11'; 
+        const ASSET_BASE = 'https://raw.githubusercontent.com/bvdevAI/WTG11/main/assets';
+
+        function debug(msg) {
+            const consoleDiv = document.getElementById('debug-console');
+            consoleDiv.innerHTML += `> ${msg}<br>`;
+            console.log(msg);
+        }
+
         class Game {
             constructor() {
                 this.scene = new THREE.Scene();
-                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 1, 5000);
+                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 1, 10000);
                 this.renderer = new THREE.WebGLRenderer({ antialias: true });
                 this.clock = new THREE.Clock();
-                this.fbxLoader = new FBXLoader();
-                this.gltfLoader = new GLTFLoader();
                 this.mixers = [];
                 this.enemies = [];
                 this.keys = {};
-                this.player = { mesh: null, actions: {}, mixer: null, isAttacking: false };
+                this.player = { mesh: null, actions: {}, mixer: null };
 
                 this.init();
             }
 
             init() {
                 this.renderer.setSize(window.innerWidth, window.innerHeight);
-                this.renderer.setPixelRatio(window.devicePixelRatio);
                 document.body.appendChild(this.renderer.domElement);
-                this.scene.background = new THREE.Color(0x222222);
+                this.scene.background = new THREE.Color(0x1a1a1a);
                 
-                const light = new THREE.DirectionalLight(0xffffff, 1.2);
-                light.position.set(50, 200, 50);
-                this.scene.add(light, new THREE.AmbientLight(0xffffff, 0.7));
+                const light = new THREE.DirectionalLight(0xffffff, 1.5);
+                light.position.set(100, 200, 100);
+                this.scene.add(light, new THREE.AmbientLight(0xffffff, 0.8));
 
-                this.loadAssets();
+                this.loadEnvironment();
+                this.loadPlayer();
+                this.loadEnemy();
+
                 window.addEventListener('keydown', e => this.keys[e.code] = true);
                 window.addEventListener('keyup', e => this.keys[e.code] = false);
-                window.addEventListener('keydown', e => { if(e.code === 'Space') this.attack(); });
-                
                 this.animate();
             }
 
-            async loadAssets() {
-                const log = document.getElementById('log');
-                
-                // 1. Environment - Fixed Absolute Path for GitHub Pages
-                this.gltfLoader.load(
-                    CITY_MODEL_PATH,
-                    (gltf) => {
-                        this.scene.add(gltf.scene);
-                        const box = new THREE.Box3().setFromObject(gltf.scene);
-                        const center = box.getCenter(new THREE.Vector3());
-                        const size = box.getSize(new THREE.Vector3()).length();
+            loadEnvironment() {
+                const loader = new GLTFLoader();
+                const path = `${REPO_NAME}/public/city.glb`;
+                debug(`Requesting City GLB from: ${path}`);
 
-                        this.camera.position.set(center.x, center.y + size * 0.2, center.z + size * 0.5);
-                        this.camera.lookAt(center);
+                loader.load(path, (gltf) => {
+                    this.scene.add(gltf.scene);
+                    const box = new THREE.Box3().setFromObject(gltf.scene);
+                    const center = box.getCenter(new THREE.Vector3());
+                    this.camera.position.set(center.x, center.y + 100, center.z + 300);
+                    this.camera.lookAt(center);
+                    
+                    document.getElementById('log').innerText = "READY";
+                    document.getElementById('sub-log').innerText = "City Rendered Successfully";
+                    debug("SUCCESS: City GLB Loaded.");
+                }, undefined, (err) => {
+                    debug(`ERROR: GLB 404/Fail at ${path}`);
+                    document.getElementById('log').innerText = "LOAD ERROR";
+                });
+            }
 
-                        console.log("Environment Loaded Successfully via GLB");
-                        log.innerText = "READY";
-                    },
-                    undefined,
-                    (err) => {
-                        console.error("Critical: GLB Load Failed at " + CITY_MODEL_PATH, err);
-                        log.innerText = "LOAD ERROR (404)";
-                    }
-                );
-
-                // 2. Player Assets (Remote FBX)
-                this.fbxLoader.load(`${REPO_ASSETS}/Player/fastrun.fbx`, (fbx) => {
+            loadPlayer() {
+                const loader = new FBXLoader();
+                loader.load(`${ASSET_BASE}/Player/fastrun.fbx`, (fbx) => {
                     this.player.mesh = fbx;
                     fbx.scale.setScalar(0.1);
                     this.scene.add(fbx);
                     this.player.mixer = new THREE.AnimationMixer(fbx);
                     this.player.actions.run = this.player.mixer.clipAction(fbx.animations[0]);
                     this.mixers.push(this.player.mixer);
-
-                    this.fbxLoader.load(`${REPO_ASSETS}/Player/Combo%20Punch1.fbx`, (anim) => {
-                        this.player.actions.attack = this.player.mixer.clipAction(anim.animations[0]);
-                    });
+                    debug("SUCCESS: Player FBX Loaded.");
                 });
+            }
 
-                // 3. Enemy Assets (Remote FBX)
-                this.fbxLoader.load(`${REPO_ASSETS}/Enemy/Run.fbx`, (fbx) => {
-                    fbx.position.set(30, 0, 30);
+            loadEnemy() {
+                const loader = new FBXLoader();
+                loader.load(`${ASSET_BASE}/Enemy/Run.fbx`, (fbx) => {
+                    fbx.position.set(50, 0, 50);
                     fbx.scale.setScalar(0.1);
                     this.scene.add(fbx);
                     const m = new THREE.AnimationMixer(fbx);
                     m.clipAction(fbx.animations[0]).play();
                     this.enemies.push({ mesh: fbx, mixer: m });
                     this.mixers.push(m);
+                    debug("SUCCESS: Enemy FBX Loaded.");
                 });
-            }
-
-            attack() {
-                if (this.player.isAttacking || !this.player.mesh) return;
-                this.player.isAttacking = true;
-                if(this.player.actions.attack) this.player.actions.attack.reset().setLoop(THREE.LoopOnce).play();
-
-                const ray = new THREE.Raycaster(this.player.mesh.position, 
-                    new THREE.Vector3(0,0,1).applyQuaternion(this.player.mesh.quaternion), 0, 15);
-                
-                const hits = ray.intersectObjects(this.enemies.map(e => e.mesh), true);
-                if (hits.length > 0) {
-                    let target = hits[0].object;
-                    while(target.parent && target.parent !== this.scene) target = target.parent;
-                    this.scene.remove(target);
-                    this.enemies = this.enemies.filter(e => e.mesh !== target);
-                }
-                setTimeout(() => this.player.isAttacking = false, 800);
             }
 
             animate() {
                 requestAnimationFrame(() => this.animate());
                 const dt = this.clock.getDelta();
 
-                if (this.player.mesh && !this.player.isAttacking) {
-                    const speed = this.keys['ShiftLeft'] ? 0.7 : 0.3;
+                if (this.player.mesh) {
+                    const speed = this.keys['ShiftLeft'] ? 1.0 : 0.4;
                     let moved = false;
                     if (this.keys['KeyW']) { this.player.mesh.translateZ(speed); moved = true; }
                     if (this.keys['KeyS']) { this.player.mesh.translateZ(-speed); moved = true; }
@@ -150,18 +135,10 @@
                     if (moved) { if(!this.player.actions.run.isRunning()) this.player.actions.run.play(); }
                     else if(this.player.actions.run) this.player.actions.run.stop();
 
-                    const camPos = new THREE.Vector3(0, 25, -45).applyMatrix4(this.player.mesh.matrixWorld);
+                    const camPos = new THREE.Vector3(0, 30, -60).applyMatrix4(this.player.mesh.matrixWorld);
                     this.camera.position.lerp(camPos, 0.1);
-                    this.camera.lookAt(this.player.mesh.position.clone().add(new THREE.Vector3(0, 12, 0)));
+                    this.camera.lookAt(this.player.mesh.position.clone().add(new THREE.Vector3(0, 15, 0)));
                 }
-
-                this.enemies.forEach(e => {
-                    if(this.player.mesh) {
-                        const dir = new THREE.Vector3().subVectors(this.player.mesh.position, e.mesh.position).normalize();
-                        e.mesh.position.add(dir.multiplyScalar(0.06));
-                        e.mesh.lookAt(this.player.mesh.position);
-                    }
-                });
 
                 this.mixers.forEach(m => m.update(dt));
                 this.renderer.render(this.scene, this.camera);
