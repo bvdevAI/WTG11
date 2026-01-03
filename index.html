@@ -2,19 +2,17 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>3D City - Cloud Hosted Build</title>
+    <title>3D Procedural City - Zero Load Error</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: monospace; }
         #ui { position: absolute; top: 10px; left: 10px; color: #0f0; background: rgba(0,0,0,0.9); padding: 15px; border: 1px solid #0f0; z-index: 1000; pointer-events: none; }
-        #debug { position: absolute; bottom: 10px; left: 10px; color: #888; font-size: 11px; pointer-events: none; max-height: 150px; overflow: hidden; }
     </style>
 </head>
 <body>
     <div id="ui">
-        STATUS: <span id="log">CONNECTING TO CLOUD</span><br>
-        ASSETS: <span id="sub-log">Waiting...</span>
+        ENGINE: <span id="log">PROCEDURAL GEN</span><br>
+        CONTROLS: WASD + SPACE to Attack
     </div>
-    <div id="debug"></div>
 
     <script type="importmap">
         {
@@ -28,111 +26,90 @@
     <script type="module">
         import * as THREE from 'three';
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
-        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-        // RELIABLE CLOUD ASSETS
-        // This is a public sample city model provided by Three.js/Google
-        const CLOUD_CITY = 'https://raw.githubusercontent.com/mrdoob/three.js/master/examples/models/gltf/LittlestTokyo.glb';
         const ASSET_DIR = './assets';
-
-        function report(msg) {
-            const d = document.getElementById('debug');
-            d.innerHTML = `> ${msg}<br>` + d.innerHTML;
-            console.log(msg);
-        }
 
         class Game {
             constructor() {
                 this.scene = new THREE.Scene();
-                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 50000);
+                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 1, 10000);
                 this.renderer = new THREE.WebGLRenderer({ antialias: true });
                 this.clock = new THREE.Clock();
                 this.mixers = [];
                 this.enemies = [];
                 this.keys = {};
-                this.player = { mesh: null, actions: {}, mixer: null, isAttacking: false };
+                this.player = { mesh: null, actions: {}, mixer: null };
 
                 this.init();
             }
 
             init() {
                 this.renderer.setSize(window.innerWidth, window.innerHeight);
-                this.renderer.setPixelRatio(window.devicePixelRatio);
                 document.body.appendChild(this.renderer.domElement);
-                this.scene.background = new THREE.Color(0x111111);
-                
-                this.scene.add(new THREE.AmbientLight(0xffffff, 2.0));
-                const sun = new THREE.DirectionalLight(0xffffff, 2.0);
-                sun.position.set(500, 1000, 500);
+                this.scene.background = new THREE.Color(0x020205);
+                this.scene.fog = new THREE.FogExp2(0x020205, 0.002);
+
+                this.scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+                const sun = new THREE.DirectionalLight(0xffffff, 1.0);
+                sun.position.set(100, 500, 100);
                 this.scene.add(sun);
 
-                // Grid Helper to ensure you see something immediately
-                this.scene.add(new THREE.GridHelper(10000, 100, 0x00ff00, 0x222222));
-                
-                this.loadEnvironment();
+                this.createCity();
                 this.loadPlayer();
                 this.loadEnemy();
 
                 window.addEventListener('keydown', e => this.keys[e.code] = true);
                 window.addEventListener('keyup', e => this.keys[e.code] = false);
-                window.addEventListener('keydown', e => { if(e.code === 'Space') this.attack(); });
                 this.animate();
             }
 
-            loadEnvironment() {
-                const loader = new GLTFLoader();
-                report("Fetching Cloud City...");
+            createCity() {
+                // Ground
+                const ground = new THREE.Mesh(
+                    new THREE.PlaneGeometry(5000, 5000),
+                    new THREE.MeshStandardMaterial({ color: 0x111111 })
+                );
+                ground.rotation.x = -Math.PI / 2;
+                this.scene.add(ground);
 
-                loader.load(CLOUD_CITY, (gltf) => {
-                    const model = gltf.scene;
-                    model.scale.setScalar(2); // Scale it up
-                    this.scene.add(model);
+                // Build 100 random buildings
+                const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+                for (let i = 0; i < 150; i++) {
+                    const material = new THREE.MeshStandardMaterial({ 
+                        color: new THREE.Color().setHSL(Math.random(), 0.5, 0.2) 
+                    });
+                    const building = new THREE.Mesh(boxGeo, material);
                     
-                    document.getElementById('log').innerText = "ONLINE";
-                    report("SUCCESS: Cloud Environment Loaded.");
+                    const w = 20 + Math.random() * 30;
+                    const h = 40 + Math.random() * 200;
+                    building.scale.set(w, h, w);
                     
-                    // Center Camera
-                    const box = new THREE.Box3().setFromObject(model);
-                    const center = box.getCenter(new THREE.Vector3());
-                    this.camera.position.set(center.x, center.y + 500, center.z + 1000);
-                    this.camera.lookAt(center);
+                    building.position.x = (Math.random() - 0.5) * 2000;
+                    building.position.z = (Math.random() - 0.5) * 2000;
+                    building.position.y = h / 2;
                     
-                    // Handle animations inside the GLB if any
-                    if(gltf.animations.length) {
-                        const mixer = new THREE.AnimationMixer(model);
-                        gltf.animations.forEach(clip => mixer.clipAction(clip).play());
-                        this.mixers.push(mixer);
-                    }
-                }, (xhr) => {
-                    const p = Math.round((xhr.loaded / (xhr.total || 25000000)) * 100);
-                    document.getElementById('sub-log').innerText = `Cloud City: ${p}%`;
-                }, (err) => {
-                    report("Cloud Load Failed. Check Internet Connection.");
-                });
+                    this.scene.add(building);
+                }
             }
 
             loadPlayer() {
                 const loader = new FBXLoader();
+                // Ensure these match your actual assets filenames exactly
                 loader.load(`${ASSET_DIR}/Fast%20Run.fbx`, (fbx) => {
                     this.player.mesh = fbx;
-                    fbx.scale.setScalar(0.2);
-                    fbx.position.set(0, 10, 0);
+                    fbx.scale.setScalar(0.15);
                     this.scene.add(fbx);
                     this.player.mixer = new THREE.AnimationMixer(fbx);
                     this.player.actions.run = this.player.mixer.clipAction(fbx.animations[0]);
                     this.mixers.push(this.player.mixer);
-                    
-                    loader.load(`${ASSET_DIR}/Combo%20Punch.fbx`, (anim) => {
-                        this.player.actions.attack = this.player.mixer.clipAction(anim.animations[0]);
-                    });
                 });
             }
 
             loadEnemy() {
                 const loader = new FBXLoader();
                 loader.load(`${ASSET_DIR}/Running.fbx`, (fbx) => {
-                    fbx.position.set(300, 10, 300);
-                    fbx.scale.setScalar(0.2);
+                    fbx.position.set(200, 0, 200);
+                    fbx.scale.setScalar(0.15);
                     this.scene.add(fbx);
                     const m = new THREE.AnimationMixer(fbx);
                     m.clipAction(fbx.animations[0]).play();
@@ -141,42 +118,29 @@
                 });
             }
 
-            attack() {
-                if (this.player.isAttacking || !this.player.mesh) return;
-                this.player.isAttacking = true;
-                if(this.player.actions.attack) this.player.actions.attack.reset().setLoop(THREE.LoopOnce).play();
-
-                const ray = new THREE.Raycaster(this.player.mesh.position, 
-                    new THREE.Vector3(0,0,1).applyQuaternion(this.player.mesh.quaternion), 0, 50);
-                const hits = ray.intersectObjects(this.enemies.map(e => e.mesh), true);
-                if (hits.length > 0) {
-                    let target = hits[0].object;
-                    while(target.parent && target.parent !== this.scene) target = target.parent;
-                    this.scene.remove(target);
-                    this.enemies = this.enemies.filter(e => e.mesh !== target);
-                    report("Combat: Target neutralized.");
-                }
-                setTimeout(() => this.player.isAttacking = false, 800);
-            }
-
             animate() {
                 requestAnimationFrame(() => this.animate());
                 const dt = this.clock.getDelta();
 
-                if (this.player.mesh && !this.player.isAttacking) {
-                    const speed = this.keys['ShiftLeft'] ? 4.0 : 1.5;
+                if (this.player.mesh) {
+                    const speed = this.keys['ShiftLeft'] ? 3.0 : 1.5;
                     let moved = false;
                     if (this.keys['KeyW']) { this.player.mesh.translateZ(speed); moved = true; }
                     if (this.keys['KeyS']) { this.player.mesh.translateZ(-speed); moved = true; }
-                    if (this.keys['KeyA']) this.player.mesh.rotateY(0.06);
-                    if (this.keys['KeyD']) this.player.mesh.rotateY(-0.06);
+                    if (this.keys['KeyA']) this.player.mesh.rotateY(0.05);
+                    if (this.keys['KeyD']) this.player.mesh.rotateY(-0.05);
 
                     if (moved) { if(!this.player.actions.run.isRunning()) this.player.actions.run.play(); }
                     else if(this.player.actions.run) this.player.actions.run.stop();
 
-                    const camPos = new THREE.Vector3(0, 120, -250).applyMatrix4(this.player.mesh.matrixWorld);
+                    const camPos = new THREE.Vector3(0, 100, -200).applyMatrix4(this.player.mesh.matrixWorld);
                     this.camera.position.lerp(camPos, 0.1);
-                    this.camera.lookAt(this.player.mesh.position.clone().add(new THREE.Vector3(0, 60, 0)));
+                    this.camera.lookAt(this.player.mesh.position.clone().add(new THREE.Vector3(0, 50, 0)));
+                } else {
+                    // Camera orbit if player hasn't loaded yet
+                    const time = Date.now() * 0.0005;
+                    this.camera.position.set(Math.cos(time) * 500, 400, Math.sin(time) * 500);
+                    this.camera.lookAt(0, 0, 0);
                 }
 
                 this.mixers.forEach(m => m.update(dt));
