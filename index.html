@@ -2,10 +2,10 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>3D Browser Game Prototype</title>
+    <title>3D Browser Game Prototype - Deployment Fix</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: monospace; }
-        #ui { position: absolute; top: 10px; left: 10px; color: #0f0; background: rgba(0,0,0,0.8); padding: 10px; border: 1px solid #0f0; pointer-events: none; }
+        #ui { position: absolute; top: 10px; left: 10px; color: #0f0; background: rgba(0,0,0,0.8); padding: 10px; border: 1px solid #0f0; pointer-events: none; z-index: 100; }
     </style>
 </head>
 <body>
@@ -26,16 +26,20 @@
     <script type="module">
         import * as THREE from 'three';
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-        const REPO = 'https://raw.githubusercontent.com/bvdevAI/WTG11/main/assets';
+        const REPO_ASSETS = 'https://raw.githubusercontent.com/bvdevAI/WTG11/main/assets';
+        // Absolute path for GitHub Pages sub-directory reliability
+        const CITY_MODEL_PATH = '/WTG11/public/city.glb'; 
         
         class Game {
             constructor() {
                 this.scene = new THREE.Scene();
-                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 3000);
+                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 1, 5000);
                 this.renderer = new THREE.WebGLRenderer({ antialias: true });
                 this.clock = new THREE.Clock();
-                this.loader = new FBXLoader();
+                this.fbxLoader = new FBXLoader();
+                this.gltfLoader = new GLTFLoader();
                 this.mixers = [];
                 this.enemies = [];
                 this.keys = {};
@@ -46,12 +50,13 @@
 
             init() {
                 this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.setPixelRatio(window.devicePixelRatio);
                 document.body.appendChild(this.renderer.domElement);
                 this.scene.background = new THREE.Color(0x222222);
                 
-                const light = new THREE.DirectionalLight(0xffffff, 1);
-                light.position.set(10, 100, 10);
-                this.scene.add(light, new THREE.AmbientLight(0xffffff, 0.6));
+                const light = new THREE.DirectionalLight(0xffffff, 1.2);
+                light.position.set(50, 200, 50);
+                this.scene.add(light, new THREE.AmbientLight(0xffffff, 0.7));
 
                 this.loadAssets();
                 window.addEventListener('keydown', e => this.keys[e.code] = true);
@@ -64,17 +69,30 @@
             async loadAssets() {
                 const log = document.getElementById('log');
                 
-                // 1. Environment (Deterministic Framing)
-                this.loader.load(`${REPO}/realistic-city-scene/Source/city.fbx`, (fbx) => {
-                    this.scene.add(fbx);
-                    const box = new THREE.Box3().setFromObject(fbx);
-                    this.camera.position.set(0, 50, 100);
-                    this.camera.lookAt(box.getCenter(new THREE.Vector3()));
-                    console.log("Environment loaded");
-                });
+                // 1. Environment - Fixed Absolute Path for GitHub Pages
+                this.gltfLoader.load(
+                    CITY_MODEL_PATH,
+                    (gltf) => {
+                        this.scene.add(gltf.scene);
+                        const box = new THREE.Box3().setFromObject(gltf.scene);
+                        const center = box.getCenter(new THREE.Vector3());
+                        const size = box.getSize(new THREE.Vector3()).length();
 
-                // 2. Player
-                this.loader.load(`${REPO}/Player/fastrun.fbx`, (fbx) => {
+                        this.camera.position.set(center.x, center.y + size * 0.2, center.z + size * 0.5);
+                        this.camera.lookAt(center);
+
+                        console.log("Environment Loaded Successfully via GLB");
+                        log.innerText = "READY";
+                    },
+                    undefined,
+                    (err) => {
+                        console.error("Critical: GLB Load Failed at " + CITY_MODEL_PATH, err);
+                        log.innerText = "LOAD ERROR (404)";
+                    }
+                );
+
+                // 2. Player Assets (Remote FBX)
+                this.fbxLoader.load(`${REPO_ASSETS}/Player/fastrun.fbx`, (fbx) => {
                     this.player.mesh = fbx;
                     fbx.scale.setScalar(0.1);
                     this.scene.add(fbx);
@@ -82,15 +100,14 @@
                     this.player.actions.run = this.player.mixer.clipAction(fbx.animations[0]);
                     this.mixers.push(this.player.mixer);
 
-                    this.loader.load(`${REPO}/Player/Combo%20Punch1.fbx`, (anim) => {
+                    this.fbxLoader.load(`${REPO_ASSETS}/Player/Combo%20Punch1.fbx`, (anim) => {
                         this.player.actions.attack = this.player.mixer.clipAction(anim.animations[0]);
-                        log.innerText = "READY";
                     });
                 });
 
-                // 3. Enemy
-                this.loader.load(`${REPO}/Enemy/Run.fbx`, (fbx) => {
-                    fbx.position.set(20, 0, 20);
+                // 3. Enemy Assets (Remote FBX)
+                this.fbxLoader.load(`${REPO_ASSETS}/Enemy/Run.fbx`, (fbx) => {
+                    fbx.position.set(30, 0, 30);
                     fbx.scale.setScalar(0.1);
                     this.scene.add(fbx);
                     const m = new THREE.AnimationMixer(fbx);
@@ -101,13 +118,12 @@
             }
 
             attack() {
-                if (this.player.isAttacking) return;
+                if (this.player.isAttacking || !this.player.mesh) return;
                 this.player.isAttacking = true;
-                this.player.actions.attack.reset().setLoop(THREE.LoopOnce).play();
+                if(this.player.actions.attack) this.player.actions.attack.reset().setLoop(THREE.LoopOnce).play();
 
-                // Hit Detection
                 const ray = new THREE.Raycaster(this.player.mesh.position, 
-                    new THREE.Vector3(0,0,1).applyQuaternion(this.player.mesh.quaternion), 0, 10);
+                    new THREE.Vector3(0,0,1).applyQuaternion(this.player.mesh.quaternion), 0, 15);
                 
                 const hits = ray.intersectObjects(this.enemies.map(e => e.mesh), true);
                 if (hits.length > 0) {
@@ -115,9 +131,8 @@
                     while(target.parent && target.parent !== this.scene) target = target.parent;
                     this.scene.remove(target);
                     this.enemies = this.enemies.filter(e => e.mesh !== target);
-                    console.log("Enemy Eliminated");
                 }
-                setTimeout(() => this.player.isAttacking = false, 1000);
+                setTimeout(() => this.player.isAttacking = false, 800);
             }
 
             animate() {
@@ -125,25 +140,27 @@
                 const dt = this.clock.getDelta();
 
                 if (this.player.mesh && !this.player.isAttacking) {
-                    const speed = this.keys['ShiftLeft'] ? 0.6 : 0.2;
+                    const speed = this.keys['ShiftLeft'] ? 0.7 : 0.3;
                     let moved = false;
                     if (this.keys['KeyW']) { this.player.mesh.translateZ(speed); moved = true; }
                     if (this.keys['KeyS']) { this.player.mesh.translateZ(-speed); moved = true; }
-                    if (this.keys['KeyA']) this.player.mesh.rotateY(0.04);
-                    if (this.keys['KeyD']) this.player.mesh.rotateY(-0.04);
+                    if (this.keys['KeyA']) this.player.mesh.rotateY(0.05);
+                    if (this.keys['KeyD']) this.player.mesh.rotateY(-0.05);
 
                     if (moved) { if(!this.player.actions.run.isRunning()) this.player.actions.run.play(); }
-                    else this.player.actions.run.stop();
+                    else if(this.player.actions.run) this.player.actions.run.stop();
 
-                    const camPos = new THREE.Vector3(0, 15, -30).applyMatrix4(this.player.mesh.matrixWorld);
+                    const camPos = new THREE.Vector3(0, 25, -45).applyMatrix4(this.player.mesh.matrixWorld);
                     this.camera.position.lerp(camPos, 0.1);
-                    this.camera.lookAt(this.player.mesh.position);
+                    this.camera.lookAt(this.player.mesh.position.clone().add(new THREE.Vector3(0, 12, 0)));
                 }
 
                 this.enemies.forEach(e => {
-                    const dir = new THREE.Vector3().subVectors(this.player.mesh.position, e.mesh.position).normalize();
-                    e.mesh.position.add(dir.multiplyScalar(0.05));
-                    e.mesh.lookAt(this.player.mesh.position);
+                    if(this.player.mesh) {
+                        const dir = new THREE.Vector3().subVectors(this.player.mesh.position, e.mesh.position).normalize();
+                        e.mesh.position.add(dir.multiplyScalar(0.06));
+                        e.mesh.lookAt(this.player.mesh.position);
+                    }
                 });
 
                 this.mixers.forEach(m => m.update(dt));
