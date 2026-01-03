@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>3D City - Raw Link Build</title>
+    <title>3D City - Master Build</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: monospace; }
         #ui { position: absolute; top: 10px; left: 10px; color: #0f0; background: rgba(0,0,0,0.9); padding: 15px; border: 1px solid #0f0; z-index: 1000; pointer-events: none; }
@@ -11,8 +11,9 @@
 </head>
 <body>
     <div id="ui">
-        CITY: <span id="log">LOADING RAW...</span><br>
-        PLAYER: <span id="p-status">WAITING</span>
+        CITY: <span id="log">PROCEDURAL READY</span><br>
+        PLAYER: <span id="p-status">LOADING...</span><br>
+        ENEMY: <span id="e-status">LOADING...</span>
     </div>
     <div id="debug"></div>
 
@@ -28,29 +29,31 @@
     <script type="module">
         import * as THREE from 'three';
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
-        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-        // AUTHORITATIVE RAW LINKS
-        const RAW_BASE = 'https://raw.githubusercontent.com/bvdevAI/WTG11/main';
-        const ENV_URL = `${RAW_BASE}/modular.glb`;
-        const PLAYER_URL = `${RAW_BASE}/assets/Fast%20Run.fbx`;
-        const ENEMY_URL = `${RAW_BASE}/assets/Running.fbx`;
+        // CONVERTED RAW LINKS (These provide binary data, not HTML)
+        const RAW_BASE = 'https://raw.githubusercontent.com/bvdevAI/WTG11/main/assets';
+        
+        const PLAYER_RUN = `${RAW_BASE}/Fast%20Run.fbx`;
+        const PLAYER_PUNCH = `${RAW_BASE}/Combo%20Punch%20(1).fbx`;
+        const ENEMY_RUN = `${RAW_BASE}/Running.fbx`;
+        const ENEMY_PUNCH = `${RAW_BASE}/Combo%20Punch.fbx`;
 
         function report(msg) {
             const d = document.getElementById('debug');
             d.innerHTML = `> ${msg}<br>` + d.innerHTML;
+            console.log(msg);
         }
 
         class Game {
             constructor() {
                 this.scene = new THREE.Scene();
-                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 1, 20000);
+                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 1, 10000);
                 this.renderer = new THREE.WebGLRenderer({ antialias: true });
                 this.clock = new THREE.Clock();
                 this.mixers = [];
                 this.enemies = [];
                 this.keys = {};
-                this.player = { mesh: null, actions: {}, mixer: null };
+                this.player = { mesh: null, actions: {}, mixer: null, isAttacking: false };
 
                 this.init();
             }
@@ -60,88 +63,108 @@
                 document.body.appendChild(this.renderer.domElement);
                 this.scene.background = new THREE.Color(0x020205);
                 
-                this.scene.add(new THREE.AmbientLight(0xffffff, 1.5));
-                const sun = new THREE.DirectionalLight(0xffffff, 1.5);
+                this.scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+                const sun = new THREE.DirectionalLight(0xffffff, 1.0);
                 sun.position.set(100, 500, 100);
                 this.scene.add(sun);
 
-                // Fail-safe Procedural Grid
-                this.scene.add(new THREE.GridHelper(5000, 100, 0x00ff00, 0x222222));
-
-                this.loadEnvironment();
+                this.createCity();
                 this.loadPlayer();
                 this.loadEnemy();
 
                 window.addEventListener('keydown', e => this.keys[e.code] = true);
                 window.addEventListener('keyup', e => this.keys[e.code] = false);
+                window.addEventListener('keydown', e => { if(e.code === 'Space') this.attack(); });
                 this.animate();
             }
 
-            loadEnvironment() {
-                const loader = new GLTFLoader();
-                report("Fetching Raw Modular City...");
-                loader.load(ENV_URL, (gltf) => {
-                    this.scene.add(gltf.scene);
-                    document.getElementById('log').innerText = "RAW CITY ONLINE";
-                    report("SUCCESS: Modular Environment loaded.");
-                }, undefined, (err) => {
-                    report("FAIL: Raw Environment URL rejected.");
-                });
+            createCity() {
+                const ground = new THREE.Mesh(
+                    new THREE.PlaneGeometry(5000, 5000),
+                    new THREE.MeshStandardMaterial({ color: 0x111111 })
+                );
+                ground.rotation.x = -Math.PI / 2;
+                this.scene.add(ground);
+
+                const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+                for (let i = 0; i < 60; i++) {
+                    const material = new THREE.MeshStandardMaterial({ color: 0x222244 });
+                    const b = new THREE.Mesh(boxGeo, material);
+                    const h = 50 + Math.random() * 200;
+                    b.scale.set(30, h, 30);
+                    b.position.set((Math.random()-0.5)*1500, h/2, (Math.random()-0.5)*1500);
+                    this.scene.add(b);
+                }
             }
 
             loadPlayer() {
-                // Show red box while waiting
-                const box = new THREE.Mesh(new THREE.BoxGeometry(10,20,10), new THREE.MeshStandardMaterial({color: 0xff0000}));
-                this.player.mesh = box;
-                this.scene.add(box);
-
                 const loader = new FBXLoader();
-                report("Fetching Raw Player FBX...");
-                loader.load(PLAYER_URL, (fbx) => {
-                    this.scene.remove(box);
+                report("Downloading Player Mesh...");
+
+                loader.load(PLAYER_RUN, (fbx) => {
                     this.player.mesh = fbx;
                     fbx.scale.setScalar(0.15);
                     this.scene.add(fbx);
+                    
                     this.player.mixer = new THREE.AnimationMixer(fbx);
                     this.player.actions.run = this.player.mixer.clipAction(fbx.animations[0]);
                     this.mixers.push(this.player.mixer);
-                    document.getElementById('p-status').innerText = "FBX ONLINE";
-                });
+                    
+                    document.getElementById('p-status').innerText = "ONLINE";
+                    report("SUCCESS: Player Mesh visible.");
+                    
+                    loader.load(PLAYER_PUNCH, (anim) => {
+                        this.player.actions.attack = this.player.mixer.clipAction(anim.animations[0]);
+                        report("SUCCESS: Combat animation loaded.");
+                    });
+                }, undefined, (err) => report("ERROR: Player URL Rejected. Use Raw links."));
             }
 
             loadEnemy() {
                 const loader = new FBXLoader();
-                loader.load(ENEMY_URL, (fbx) => {
-                    fbx.position.set(150, 0, 150);
+                loader.load(ENEMY_RUN, (fbx) => {
+                    fbx.position.set(200, 0, 200);
                     fbx.scale.setScalar(0.15);
                     this.scene.add(fbx);
+                    
                     const m = new THREE.AnimationMixer(fbx);
                     m.clipAction(fbx.animations[0]).play();
+                    this.enemies.push({ mesh: fbx, mixer: m });
                     this.mixers.push(m);
+                    document.getElementById('e-status').innerText = "ONLINE";
                 });
+            }
+
+            attack() {
+                if (this.player.isAttacking || !this.player.mesh) return;
+                this.player.isAttacking = true;
+                if(this.player.actions.attack) {
+                    this.player.actions.attack.reset().setLoop(THREE.LoopOnce).play();
+                }
+                setTimeout(() => { this.player.isAttacking = false; }, 800);
+                report("Action: Combo Punch executed.");
             }
 
             animate() {
                 requestAnimationFrame(() => this.animate());
                 const dt = this.clock.getDelta();
-                if (this.player.mesh) {
-                    const speed = this.keys['ShiftLeft'] ? 3.5 : 1.5;
+
+                if (this.player.mesh && !this.player.isAttacking) {
+                    const speed = this.keys['ShiftLeft'] ? 4.0 : 1.8;
                     let moved = false;
                     if (this.keys['KeyW']) { this.player.mesh.translateZ(speed); moved = true; }
                     if (this.keys['KeyS']) { this.player.mesh.translateZ(-speed); moved = true; }
                     if (this.keys['KeyA']) this.player.mesh.rotateY(0.06);
                     if (this.keys['KeyD']) this.player.mesh.rotateY(-0.06);
 
-                    if (moved && this.player.actions.run) { 
-                        if(!this.player.actions.run.isRunning()) this.player.actions.run.play(); 
-                    } else if(this.player.actions.run) {
-                        this.player.actions.run.stop();
-                    }
+                    if (moved) { if(!this.player.actions.run.isRunning()) this.player.actions.run.play(); }
+                    else if(this.player.actions.run) this.player.actions.run.stop();
 
-                    const camPos = new THREE.Vector3(0, 100, -200).applyMatrix4(this.player.mesh.matrixWorld);
+                    const camPos = new THREE.Vector3(0, 100, -220).applyMatrix4(this.player.mesh.matrixWorld);
                     this.camera.position.lerp(camPos, 0.1);
                     this.camera.lookAt(this.player.mesh.position.clone().add(new THREE.Vector3(0, 50, 0)));
                 }
+
                 this.mixers.forEach(m => m.update(dt));
                 this.renderer.render(this.scene, this.camera);
             }
