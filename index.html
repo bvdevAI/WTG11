@@ -2,17 +2,18 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>3D City - Final Security Bypass</title>
+    <title>3D City - Ultimate Security Fix</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #000; font-family: monospace; }
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', monospace; }
         #ui { position: absolute; top: 10px; left: 10px; color: #0f0; background: rgba(0,0,0,0.9); padding: 15px; border: 1px solid #0f0; z-index: 1000; pointer-events: none; }
         #debug { position: absolute; bottom: 10px; left: 10px; color: #888; font-size: 11px; pointer-events: none; max-height: 120px; overflow: hidden; }
     </style>
 </head>
 <body>
     <div id="ui">
-        SECURITY: <span id="log">BYPASS ACTIVE</span><br>
-        PLAYER: <span id="p-status">WAITING</span>
+        SYSTEM: <span id="log">PROCEDURAL CITY ACTIVE</span><br>
+        PLAYER: <span id="p-status">INITIALIZING...</span><br>
+        ENEMY: <span id="e-status">STANDBY</span>
     </div>
     <div id="debug"></div>
 
@@ -29,19 +30,19 @@
         import * as THREE from 'three';
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 
-        // THE BYPASS: We use a CORS proxy to wrap the GitHub Raw links
-        const PROXY = 'https://corsproxy.io/?'; 
-        const RAW_BASE = 'https://raw.githubusercontent.com/bvdevAI/WTG11/main/assets';
-        
+        // PATH CONFIGURATION
+        // Using Relative Paths - Must be run via a Local Server or GitHub Pages
+        const ASSET_BASE = './assets';
         const ASSETS = {
-            PLAYER_RUN: encodeURI(`${PROXY}${RAW_BASE}/Fast Run.fbx`),
-            PLAYER_PUNCH: encodeURI(`${PROXY}${RAW_BASE}/Combo Punch (1).fbx`),
-            ENEMY_RUN: encodeURI(`${PROXY}${RAW_BASE}/Running.fbx`)
+            PLAYER_RUN: `${ASSET_BASE}/Fast%20Run.fbx`,
+            PLAYER_PUNCH: `${ASSET_BASE}/Combo%20Punch%20(1).fbx`,
+            ENEMY_RUN: `${ASSET_BASE}/Running.fbx`
         };
 
         function report(msg) {
             const d = document.getElementById('debug');
             d.innerHTML = `> ${msg}<br>` + d.innerHTML;
+            console.log(msg);
         }
 
         class Game {
@@ -53,30 +54,35 @@
                 this.mixers = [];
                 this.enemies = [];
                 this.keys = {};
-                this.player = { mesh: null, actions: {}, mixer: null };
+                this.player = { mesh: null, actions: {}, mixer: null, isAttacking: false };
 
                 this.init();
             }
 
             init() {
                 this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.setPixelRatio(window.devicePixelRatio);
                 document.body.appendChild(this.renderer.domElement);
-                this.scene.background = new THREE.Color(0x020205);
                 
+                this.scene.background = new THREE.Color(0x020205);
+                this.scene.fog = new THREE.FogExp2(0x020205, 0.002);
+
                 this.scene.add(new THREE.AmbientLight(0xffffff, 1.5));
                 const sun = new THREE.DirectionalLight(0xffffff, 1.2);
                 sun.position.set(100, 500, 100);
                 this.scene.add(sun);
 
-                // Grid verifies engine is working immediately
-                this.scene.add(new THREE.GridHelper(5000, 100, 0x00ff00, 0x222222));
-
+                // Build the world you saw in your screenshot (image_41d695.png)
                 this.createCity();
+                
+                // Load Players
                 this.loadPlayer();
                 this.loadEnemy();
 
                 window.addEventListener('keydown', e => this.keys[e.code] = true);
                 window.addEventListener('keyup', e => this.keys[e.code] = false);
+                window.addEventListener('keydown', e => { if(e.code === 'Space') this.attack(); });
+                
                 this.animate();
             }
 
@@ -88,30 +94,38 @@
                 ground.rotation.x = -Math.PI / 2;
                 this.scene.add(ground);
 
+                this.scene.add(new THREE.GridHelper(5000, 100, 0x00ff00, 0x222222));
+
                 const boxGeo = new THREE.BoxGeometry(40, 1, 40);
-                for (let i = 0; i < 60; i++) {
+                for (let i = 0; i < 70; i++) {
                     const material = new THREE.MeshStandardMaterial({ 
                         color: new THREE.Color().setHSL(Math.random(), 0.3, 0.2) 
                     });
                     const b = new THREE.Mesh(boxGeo, material);
-                    const h = 50 + Math.random() * 250;
+                    const h = 50 + Math.random() * 300;
                     b.scale.set(1, h, 1);
-                    b.position.set((Math.random()-0.5)*2000, h/2, (Math.random()-0.5)*2000);
+                    b.position.set((Math.random()-0.5)*2500, h/2, (Math.random()-0.5)*2500);
                     this.scene.add(b);
                 }
             }
 
             loadPlayer() {
-                // Keep the Red Cube so we can test movement while waiting for Proxy
-                const box = new THREE.Mesh(new THREE.BoxGeometry(12,24,12), new THREE.MeshStandardMaterial({color: 0xff0000}));
+                // RED CUBE PLACEHOLDER (Confirmed visible in your screenshot image_417f87.png)
+                const box = new THREE.Mesh(
+                    new THREE.BoxGeometry(15, 30, 15),
+                    new THREE.MeshStandardMaterial({ color: 0xff0000 })
+                );
                 this.player.mesh = box;
                 this.scene.add(box);
 
                 const loader = new FBXLoader();
-                report("System: Requesting binary via CORS Proxy...");
+                // Set crossOrigin to anonymous to help bypass some browser blocks
+                loader.setCrossOrigin('anonymous');
+                
+                report(`Requesting: ${ASSETS.PLAYER_RUN}`);
 
                 loader.load(ASSETS.PLAYER_RUN, (fbx) => {
-                    this.scene.remove(box); 
+                    this.scene.remove(box); // Success! Remove placeholder
                     this.player.mesh = fbx;
                     fbx.scale.setScalar(0.15);
                     this.scene.add(fbx);
@@ -120,31 +134,50 @@
                     this.player.actions.run = this.player.mixer.clipAction(fbx.animations[0]);
                     this.mixers.push(this.player.mixer);
                     
-                    document.getElementById('p-status').innerText = "PROXY SUCCESS";
-                    report("SUCCESS: Player FBX injected.");
-                }, undefined, (err) => {
-                    report("FATAL: Even Proxy was blocked. Check browser extensions.");
+                    document.getElementById('p-status').innerText = "FBX RENDERED";
+                    report("SUCCESS: Player model online.");
+                    
+                    // Attempt to load combat anim
+                    loader.load(ASSETS.PLAYER_PUNCH, (anim) => {
+                        this.player.actions.attack = this.player.mixer.clipAction(anim.animations[0]);
+                    });
+                }, (xhr) => {
+                    const p = Math.round((xhr.loaded / (xhr.total || 1)) * 100);
+                    document.getElementById('p-status').innerText = `DL: ${p}%`;
+                }, (err) => {
+                    report("SECURITY BLOCK: Use a Local Server (Live Server) to view FBX.");
                 });
             }
 
             loadEnemy() {
                 const loader = new FBXLoader();
                 loader.load(ASSETS.ENEMY_RUN, (fbx) => {
-                    fbx.position.set(150, 0, 150);
+                    fbx.position.set(200, 0, 200);
                     fbx.scale.setScalar(0.15);
                     this.scene.add(fbx);
                     const m = new THREE.AnimationMixer(fbx);
                     m.clipAction(fbx.animations[0]).play();
+                    this.enemies.push({ mesh: fbx, mixer: m });
                     this.mixers.push(m);
+                    document.getElementById('e-status').innerText = "ONLINE";
                 });
+            }
+
+            attack() {
+                if (this.player.isAttacking || !this.player.mesh) return;
+                this.player.isAttacking = true;
+                if(this.player.actions.attack) {
+                    this.player.actions.attack.reset().setLoop(THREE.LoopOnce).play();
+                }
+                setTimeout(() => { this.player.isAttacking = false; }, 800);
             }
 
             animate() {
                 requestAnimationFrame(() => this.animate());
                 const dt = this.clock.getDelta();
 
-                if (this.player.mesh) {
-                    const speed = this.keys['ShiftLeft'] ? 4.0 : 1.8;
+                if (this.player.mesh && !this.player.isAttacking) {
+                    const speed = this.keys['ShiftLeft'] ? 4.5 : 2.0;
                     let moved = false;
                     if (this.keys['KeyW']) { this.player.mesh.translateZ(speed); moved = true; }
                     if (this.keys['KeyS']) { this.player.mesh.translateZ(-speed); moved = true; }
@@ -157,9 +190,10 @@
                         this.player.actions.run.stop();
                     }
 
-                    const camPos = new THREE.Vector3(0, 110, -230).applyMatrix4(this.player.mesh.matrixWorld);
+                    // Smooth Camera Follow
+                    const camPos = new THREE.Vector3(0, 120, -250).applyMatrix4(this.player.mesh.matrixWorld);
                     this.camera.position.lerp(camPos, 0.1);
-                    this.camera.lookAt(this.player.mesh.position.clone().add(new THREE.Vector3(0, 50, 0)));
+                    this.camera.lookAt(this.player.mesh.position.clone().add(new THREE.Vector3(0, 60, 0)));
                 }
 
                 this.mixers.forEach(m => m.update(dt));
