@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>3D City - Master Build</title>
+    <title>3D City - Relative Path Build</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: monospace; }
         #ui { position: absolute; top: 10px; left: 10px; color: #0f0; background: rgba(0,0,0,0.9); padding: 15px; border: 1px solid #0f0; z-index: 1000; pointer-events: none; }
@@ -11,9 +11,8 @@
 </head>
 <body>
     <div id="ui">
-        CITY: <span id="log">PROCEDURAL READY</span><br>
-        PLAYER: <span id="p-status">LOADING...</span><br>
-        ENEMY: <span id="e-status">LOADING...</span>
+        ENV: <span id="log">PROCEDURAL ACTIVE</span><br>
+        PLAYER: <span id="p-status">ATTEMPTING LOAD...</span>
     </div>
     <div id="debug"></div>
 
@@ -30,13 +29,12 @@
         import * as THREE from 'three';
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 
-        // CONVERTED RAW LINKS (These provide binary data, not HTML)
-        const RAW_BASE = 'https://raw.githubusercontent.com/bvdevAI/WTG11/main/assets';
-        
-        const PLAYER_RUN = `${RAW_BASE}/Fast%20Run.fbx`;
-        const PLAYER_PUNCH = `${RAW_BASE}/Combo%20Punch%20(1).fbx`;
-        const ENEMY_RUN = `${RAW_BASE}/Running.fbx`;
-        const ENEMY_PUNCH = `${RAW_BASE}/Combo%20Punch.fbx`;
+        // RELATIVE PATHS (Works best for GitHub Pages)
+        const ASSETS = {
+            PLAYER_RUN: './assets/Fast%20Run.fbx',
+            PLAYER_PUNCH: './assets/Combo%20Punch%20(1).fbx',
+            ENEMY_RUN: './assets/Running.fbx'
+        };
 
         function report(msg) {
             const d = document.getElementById('debug');
@@ -63,10 +61,13 @@
                 document.body.appendChild(this.renderer.domElement);
                 this.scene.background = new THREE.Color(0x020205);
                 
-                this.scene.add(new THREE.AmbientLight(0xffffff, 1.2));
-                const sun = new THREE.DirectionalLight(0xffffff, 1.0);
+                this.scene.add(new THREE.AmbientLight(0xffffff, 1.5));
+                const sun = new THREE.DirectionalLight(0xffffff, 1.2);
                 sun.position.set(100, 500, 100);
                 this.scene.add(sun);
+
+                // Fail-safe Grid (Confirmed working in your screenshots)
+                this.scene.add(new THREE.GridHelper(5000, 100, 0x00ff00, 0x222222));
 
                 this.createCity();
                 this.loadPlayer();
@@ -79,6 +80,7 @@
             }
 
             createCity() {
+                // Ground
                 const ground = new THREE.Mesh(
                     new THREE.PlaneGeometry(5000, 5000),
                     new THREE.MeshStandardMaterial({ color: 0x111111 })
@@ -86,22 +88,31 @@
                 ground.rotation.x = -Math.PI / 2;
                 this.scene.add(ground);
 
+                // Buildings (The cubes from your screenshot)
                 const boxGeo = new THREE.BoxGeometry(1, 1, 1);
                 for (let i = 0; i < 60; i++) {
-                    const material = new THREE.MeshStandardMaterial({ color: 0x222244 });
+                    const material = new THREE.MeshStandardMaterial({ 
+                        color: new THREE.Color().setHSL(Math.random(), 0.3, 0.2) 
+                    });
                     const b = new THREE.Mesh(boxGeo, material);
-                    const h = 50 + Math.random() * 200;
-                    b.scale.set(30, h, 30);
-                    b.position.set((Math.random()-0.5)*1500, h/2, (Math.random()-0.5)*1500);
+                    const h = 50 + Math.random() * 250;
+                    b.scale.set(40, h, 40);
+                    b.position.set((Math.random()-0.5)*2000, h/2, (Math.random()-0.5)*2000);
                     this.scene.add(b);
                 }
             }
 
             loadPlayer() {
-                const loader = new FBXLoader();
-                report("Downloading Player Mesh...");
+                // Show the RED CUBE while loading
+                const box = new THREE.Mesh(new THREE.BoxGeometry(12,24,12), new THREE.MeshStandardMaterial({color: 0xff0000}));
+                this.player.mesh = box;
+                this.scene.add(box);
 
-                loader.load(PLAYER_RUN, (fbx) => {
+                const loader = new FBXLoader();
+                report(`Attempting relative load: ${ASSETS.PLAYER_RUN}`);
+
+                loader.load(ASSETS.PLAYER_RUN, (fbx) => {
+                    this.scene.remove(box); // Kill the red cube
                     this.player.mesh = fbx;
                     fbx.scale.setScalar(0.15);
                     this.scene.add(fbx);
@@ -110,39 +121,36 @@
                     this.player.actions.run = this.player.mixer.clipAction(fbx.animations[0]);
                     this.mixers.push(this.player.mixer);
                     
-                    document.getElementById('p-status').innerText = "ONLINE";
-                    report("SUCCESS: Player Mesh visible.");
+                    document.getElementById('p-status').innerText = "PLAYER ONLINE";
+                    report("SUCCESS: Player Mesh switched from Cube to FBX.");
                     
-                    loader.load(PLAYER_PUNCH, (anim) => {
+                    // Attack Anim
+                    loader.load(ASSETS.PLAYER_PUNCH, (anim) => {
                         this.player.actions.attack = this.player.mixer.clipAction(anim.animations[0]);
-                        report("SUCCESS: Combat animation loaded.");
                     });
-                }, undefined, (err) => report("ERROR: Player URL Rejected. Use Raw links."));
+                }, undefined, (err) => {
+                    report("RELATIVE LOAD FAILED. Browser security is blocking local assets.");
+                });
             }
 
             loadEnemy() {
                 const loader = new FBXLoader();
-                loader.load(ENEMY_RUN, (fbx) => {
-                    fbx.position.set(200, 0, 200);
+                loader.load(ASSETS.ENEMY_RUN, (fbx) => {
+                    fbx.position.set(150, 0, 150);
                     fbx.scale.setScalar(0.15);
                     this.scene.add(fbx);
-                    
                     const m = new THREE.AnimationMixer(fbx);
                     m.clipAction(fbx.animations[0]).play();
                     this.enemies.push({ mesh: fbx, mixer: m });
                     this.mixers.push(m);
-                    document.getElementById('e-status').innerText = "ONLINE";
                 });
             }
 
             attack() {
                 if (this.player.isAttacking || !this.player.mesh) return;
                 this.player.isAttacking = true;
-                if(this.player.actions.attack) {
-                    this.player.actions.attack.reset().setLoop(THREE.LoopOnce).play();
-                }
+                if(this.player.actions.attack) this.player.actions.attack.reset().setLoop(THREE.LoopOnce).play();
                 setTimeout(() => { this.player.isAttacking = false; }, 800);
-                report("Action: Combo Punch executed.");
             }
 
             animate() {
@@ -157,10 +165,13 @@
                     if (this.keys['KeyA']) this.player.mesh.rotateY(0.06);
                     if (this.keys['KeyD']) this.player.mesh.rotateY(-0.06);
 
-                    if (moved) { if(!this.player.actions.run.isRunning()) this.player.actions.run.play(); }
-                    else if(this.player.actions.run) this.player.actions.run.stop();
+                    if (moved && this.player.actions.run) { 
+                        if(!this.player.actions.run.isRunning()) this.player.actions.run.play(); 
+                    } else if(this.player.actions.run) {
+                        this.player.actions.run.stop();
+                    }
 
-                    const camPos = new THREE.Vector3(0, 100, -220).applyMatrix4(this.player.mesh.matrixWorld);
+                    const camPos = new THREE.Vector3(0, 110, -230).applyMatrix4(this.player.mesh.matrixWorld);
                     this.camera.position.lerp(camPos, 0.1);
                     this.camera.lookAt(this.player.mesh.position.clone().add(new THREE.Vector3(0, 50, 0)));
                 }
