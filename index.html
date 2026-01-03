@@ -2,17 +2,17 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>3D City Prototype - Modular Rebuild</title>
+    <title>3D City Prototype - Modular Build</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #050505; font-family: monospace; }
+        body { margin: 0; overflow: hidden; background: #050505; font-family: 'Courier New', monospace; }
         #ui { position: absolute; top: 10px; left: 10px; color: #0f0; background: rgba(0,0,0,0.9); padding: 15px; border: 1px solid #0f0; z-index: 1000; pointer-events: none; }
         #debug { position: absolute; bottom: 10px; left: 10px; color: #888; font-size: 11px; pointer-events: none; max-height: 150px; overflow: hidden; }
     </style>
 </head>
 <body>
     <div id="ui">
-        ENGINE: <span id="log">BOOTING</span><br>
-        ASSETS: <span id="sub-log">Initializing...</span>
+        STATUS: <span id="log">BOOTING</span><br>
+        DOWNLOAD: <span id="sub-log">Initializing...</span>
     </div>
     <div id="debug"></div>
 
@@ -30,15 +30,9 @@
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-        // AUTHORITATIVE PATHS FROM SCREENSHOTS
-        const ENV_PATH = './modular.glb'; 
-        const GITHUB_RAW = 'https://raw.githubusercontent.com/bvdevAI/WTG11/main/assets';
-        
-        const ANIMATIONS = {
-            PLAYER_RUN: `${GITHUB_RAW}/Fast%20Run.fbx`,
-            PLAYER_ATTACK: `${GITHUB_RAW}/Combo%20Punch.fbx`,
-            ENEMY_RUN: `${GITHUB_RAW}/Running.fbx`
-        };
+        // PATH CONFIGURATION (ROOT OF MAIN BRANCH)
+        const MODULAR_CITY = './modular.glb'; 
+        const ASSET_DIR = './assets';
 
         function report(msg) {
             const d = document.getElementById('debug');
@@ -49,7 +43,7 @@
         class Game {
             constructor() {
                 this.scene = new THREE.Scene();
-                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 1, 20000);
+                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 1, 25000);
                 this.renderer = new THREE.WebGLRenderer({ antialias: true });
                 this.clock = new THREE.Clock();
                 this.mixers = [];
@@ -66,14 +60,15 @@
                 document.body.appendChild(this.renderer.domElement);
                 this.scene.background = new THREE.Color(0x0a0a0a);
                 
+                // Enhanced Lighting for Modular Textures
                 this.scene.add(new THREE.AmbientLight(0xffffff, 1.2));
                 const sun = new THREE.DirectionalLight(0xffffff, 1.5);
                 sun.position.set(100, 500, 100);
                 this.scene.add(sun);
 
-                // Proof-of-life Grid
+                // Immediate Grid to verify engine is alive
                 this.scene.add(new THREE.GridHelper(5000, 100, 0x00ff00, 0x222222));
-                report("System: Engine active. Loading modular geometry...");
+                report("System: Engine active. Requesting modular.glb...");
 
                 this.loadEnvironment();
                 this.loadPlayer();
@@ -87,25 +82,31 @@
 
             loadEnvironment() {
                 const loader = new GLTFLoader();
-                report(`Fetching: ${ENV_PATH}`);
+                report(`Fetching: ${MODULAR_CITY}`);
 
-                loader.load(ENV_PATH, (gltf) => {
+                loader.load(MODULAR_CITY, (gltf) => {
                     this.scene.add(gltf.scene);
                     const box = new THREE.Box3().setFromObject(gltf.scene);
                     const center = box.getCenter(new THREE.Vector3());
-                    this.camera.position.set(center.x, center.y + 200, center.z + 500);
+                    this.camera.position.set(center.x, center.y + 300, center.z + 600);
                     this.camera.lookAt(center);
                     document.getElementById('log').innerText = "READY";
-                    report("SUCCESS: Environment Rendered.");
+                    report("SUCCESS: Modular City Loaded.");
                 }, (xhr) => {
-                    const p = Math.round((xhr.loaded / (xhr.total || 1)) * 100);
-                    document.getElementById('sub-log').innerText = `City: ${p}%`;
-                }, (err) => { report("404: modular.glb not found in root."); });
+                    if (xhr.total > 0) {
+                        const p = Math.round((xhr.loaded / xhr.total) * 100);
+                        document.getElementById('sub-log').innerText = `City: ${p}%`;
+                    }
+                }, (err) => {
+                    report("ERROR: modular.glb not found. Ensure it is in the root of main branch.");
+                    document.getElementById('log').innerText = "ENV ERROR";
+                });
             }
 
             loadPlayer() {
                 const loader = new FBXLoader();
-                loader.load(ANIMATIONS.PLAYER_RUN, (fbx) => {
+                // Filenames adjusted to match your screenshot (spaces encoded as %20)
+                loader.load(`${ASSET_DIR}/Fast%20Run.fbx`, (fbx) => {
                     this.player.mesh = fbx;
                     fbx.scale.setScalar(0.15);
                     this.scene.add(fbx);
@@ -113,16 +114,17 @@
                     this.player.actions.run = this.player.mixer.clipAction(fbx.animations[0]);
                     this.mixers.push(this.player.mixer);
                     
-                    loader.load(ANIMATIONS.PLAYER_ATTACK, (anim) => {
+                    loader.load(`${ASSET_DIR}/Combo%20Punch.fbx`, (anim) => {
                         this.player.actions.attack = this.player.mixer.clipAction(anim.animations[0]);
-                        report("System: Player assets online.");
+                        report("System: Player combat system armed.");
                     });
                 });
             }
 
             loadEnemy() {
                 const loader = new FBXLoader();
-                loader.load(ANIMATIONS.ENEMY_RUN, (fbx) => {
+                // Filename matched to 'Running.fbx' in your assets screenshot
+                loader.load(`${ASSET_DIR}/Running.fbx`, (fbx) => {
                     fbx.position.set(150, 0, 150);
                     fbx.scale.setScalar(0.15);
                     this.scene.add(fbx);
@@ -130,7 +132,7 @@
                     m.clipAction(fbx.animations[0]).play();
                     this.enemies.push({ mesh: fbx, mixer: m });
                     this.mixers.push(m);
-                    report("System: Enemy spawn successful.");
+                    report("System: Enemy unit spawned.");
                 });
             }
 
@@ -140,14 +142,14 @@
                 if(this.player.actions.attack) this.player.actions.attack.reset().setLoop(THREE.LoopOnce).play();
 
                 const ray = new THREE.Raycaster(this.player.mesh.position, 
-                    new THREE.Vector3(0,0,1).applyQuaternion(this.player.mesh.quaternion), 0, 30);
+                    new THREE.Vector3(0,0,1).applyQuaternion(this.player.mesh.quaternion), 0, 35);
                 const hits = ray.intersectObjects(this.enemies.map(e => e.mesh), true);
                 if (hits.length > 0) {
                     let target = hits[0].object;
                     while(target.parent && target.parent !== this.scene) target = target.parent;
                     this.scene.remove(target);
                     this.enemies = this.enemies.filter(e => e.mesh !== target);
-                    report("Combat: Enemy neutralized.");
+                    report("Combat: Target neutralized.");
                 }
                 setTimeout(() => this.player.isAttacking = false, 800);
             }
@@ -157,7 +159,7 @@
                 const dt = this.clock.getDelta();
 
                 if (this.player.mesh && !this.player.isAttacking) {
-                    const speed = this.keys['ShiftLeft'] ? 2.5 : 1.2;
+                    const speed = this.keys['ShiftLeft'] ? 2.8 : 1.4;
                     let moved = false;
                     if (this.keys['KeyW']) { this.player.mesh.translateZ(speed); moved = true; }
                     if (this.keys['KeyS']) { this.player.mesh.translateZ(-speed); moved = true; }
@@ -167,9 +169,9 @@
                     if (moved) { if(!this.player.actions.run.isRunning()) this.player.actions.run.play(); }
                     else if(this.player.actions.run) this.player.actions.run.stop();
 
-                    const camPos = new THREE.Vector3(0, 80, -150).applyMatrix4(this.player.mesh.matrixWorld);
+                    const camPos = new THREE.Vector3(0, 90, -170).applyMatrix4(this.player.mesh.matrixWorld);
                     this.camera.position.lerp(camPos, 0.1);
-                    this.camera.lookAt(this.player.mesh.position.clone().add(new THREE.Vector3(0, 40, 0)));
+                    this.camera.lookAt(this.player.mesh.position.clone().add(new THREE.Vector3(0, 45, 0)));
                 }
 
                 this.mixers.forEach(m => m.update(dt));
