@@ -2,19 +2,19 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>3D Prototype - Absolute Path Fix</title>
+    <title>3D Prototype - Absolute Asset Fix</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #111; font-family: 'Courier New', monospace; }
-        #ui { position: absolute; top: 10px; left: 10px; color: #0f0; background: rgba(0,0,0,0.9); padding: 15px; border: 1px solid #0f0; z-index: 1000; }
-        #debug-console { position: absolute; bottom: 10px; left: 10px; color: #aaa; font-size: 11px; pointer-events: none; max-height: 100px; overflow: hidden; }
+        body { margin: 0; overflow: hidden; background: #050505; font-family: 'Courier New', monospace; }
+        #ui { position: absolute; top: 10px; left: 10px; color: #0f0; background: rgba(0,0,0,0.9); padding: 15px; border: 1px solid #0f0; z-index: 1000; pointer-events: none; }
+        #console { position: absolute; bottom: 10px; left: 10px; color: #888; font-size: 11px; pointer-events: none; }
     </style>
 </head>
 <body>
     <div id="ui">
-        STATUS: <span id="log">BOOTING...</span><br>
-        <small id="sub-log">Checking Assets...</small>
+        ENGINE: <span id="log">BOOTING</span><br>
+        ASSETS: <span id="sub-log">Waiting...</span>
     </div>
-    <div id="debug-console"></div>
+    <div id="console"></div>
 
     <script type="importmap">
         {
@@ -30,20 +30,19 @@
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-        // GITHUB PAGES PATHING - Dot-relative is safest
-        const CITY_PATH = './public/city.glb'; 
-        const ASSET_BASE = 'https://raw.githubusercontent.com/bvdevAI/WTG11/main/assets';
+        // WE USE THE DIRECT GITHUB RAW URL TO BYPASS ALL FOLDER ISSUES
+        const RAW_URL = 'https://raw.githubusercontent.com/bvdevAI/WTG11/main';
 
-        function debug(msg) {
-            const consoleDiv = document.getElementById('debug-console');
-            consoleDiv.innerHTML = `> ${msg}<br>` + consoleDiv.innerHTML;
+        function report(msg) {
+            const c = document.getElementById('console');
+            c.innerHTML = `> ${msg}<br>` + c.innerHTML;
             console.log(msg);
         }
 
         class Game {
             constructor() {
                 this.scene = new THREE.Scene();
-                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 1, 10000);
+                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 1, 20000);
                 this.renderer = new THREE.WebGLRenderer({ antialias: true });
                 this.clock = new THREE.Clock();
                 this.mixers = [];
@@ -56,80 +55,57 @@
 
             init() {
                 this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.setPixelRatio(window.devicePixelRatio);
                 document.body.appendChild(this.renderer.domElement);
-                this.scene.background = new THREE.Color(0x1a1a1a);
-                
-                const light = new THREE.DirectionalLight(0xffffff, 1.5);
-                light.position.set(100, 200, 100);
-                this.scene.add(light, new THREE.AmbientLight(0xffffff, 0.8));
 
-                this.loadEnvironment();
-                this.loadPlayer();
-                this.loadEnemy();
+                // Lighting
+                this.scene.add(new THREE.AmbientLight(0xffffff, 1.0));
+                const sun = new THREE.DirectionalLight(0xffffff, 1.0);
+                sun.position.set(100, 500, 100);
+                this.scene.add(sun);
 
+                // MANDATORY GRID: If you see this, the code works!
+                const grid = new THREE.GridHelper(5000, 100, 0x00ff00, 0x222222);
+                this.scene.add(grid);
+
+                this.loadAssets();
                 window.addEventListener('keydown', e => this.keys[e.code] = true);
                 window.addEventListener('keyup', e => this.keys[e.code] = false);
                 this.animate();
             }
 
-            loadEnvironment() {
-                const loader = new GLTFLoader();
-                debug(`Loading City from: ${CITY_PATH}`);
+            loadAssets() {
+                const gltfLoader = new GLTFLoader();
+                const fbxLoader = new FBXLoader();
 
-                // Emergency Fallback Floor (Grid)
-                const grid = new THREE.GridHelper(2000, 50, 0x00ff00, 0x444444);
-                this.scene.add(grid);
-
-                loader.load(CITY_PATH, (gltf) => {
+                // 1. Load City from Absolute URL
+                const cityURL = `${RAW_URL}/public/city.glb`;
+                report(`Fetching City: ${cityURL}`);
+                
+                gltfLoader.load(cityURL, (gltf) => {
                     this.scene.add(gltf.scene);
                     const box = new THREE.Box3().setFromObject(gltf.scene);
                     const center = box.getCenter(new THREE.Vector3());
-                    
-                    // Framed camera based on city size
-                    this.camera.position.set(center.x, center.y + 200, center.z + 500);
+                    this.camera.position.set(center.x, center.y + 300, center.z + 600);
                     this.camera.lookAt(center);
-                    
-                    document.getElementById('log').innerText = "READY";
-                    document.getElementById('sub-log').innerText = "City Rendered Successfully";
-                    debug("SUCCESS: City GLB Loaded.");
-                }, 
-                (xhr) => {
-                    if(xhr.total > 0) {
-                        const p = Math.round((xhr.loaded / xhr.total) * 100);
-                        document.getElementById('sub-log').innerText = `Downloading City: ${p}%`;
-                    }
-                },
-                (err) => {
-                    debug(`ERROR: 404 at ${CITY_PATH}`);
-                    document.getElementById('log').innerText = "CITY 404";
-                    document.getElementById('sub-log').innerText = "Using Fallback Grid";
+                    document.getElementById('log').innerText = "RUNNING";
+                    report("SUCCESS: City Rendered.");
+                }, (xhr) => {
+                    const p = Math.round((xhr.loaded / (xhr.total || 50000000)) * 100);
+                    document.getElementById('sub-log').innerText = `City: ${p}%`;
+                }, (err) => {
+                    report("FAIL: City GLB could not be reached.");
                 });
-            }
 
-            loadPlayer() {
-                const loader = new FBXLoader();
-                loader.load(`${ASSET_BASE}/Player/fastrun.fbx`, (fbx) => {
+                // 2. Load Player
+                fbxLoader.load(`${RAW_URL}/assets/Player/fastrun.fbx`, (fbx) => {
                     this.player.mesh = fbx;
-                    fbx.scale.setScalar(0.12);
+                    fbx.scale.setScalar(0.15);
                     this.scene.add(fbx);
                     this.player.mixer = new THREE.AnimationMixer(fbx);
                     this.player.actions.run = this.player.mixer.clipAction(fbx.animations[0]);
                     this.mixers.push(this.player.mixer);
-                    debug("SUCCESS: Player Mesh Online.");
-                });
-            }
-
-            loadEnemy() {
-                const loader = new FBXLoader();
-                loader.load(`${ASSET_BASE}/Enemy/Run.fbx`, (fbx) => {
-                    fbx.position.set(100, 0, 100);
-                    fbx.scale.setScalar(0.12);
-                    this.scene.add(fbx);
-                    const m = new THREE.AnimationMixer(fbx);
-                    m.clipAction(fbx.animations[0]).play();
-                    this.enemies.push({ mesh: fbx, mixer: m });
-                    this.mixers.push(m);
-                    debug("SUCCESS: Enemy Spawned.");
+                    report("SUCCESS: Player Mesh Loaded.");
                 });
             }
 
@@ -138,7 +114,7 @@
                 const dt = this.clock.getDelta();
 
                 if (this.player.mesh) {
-                    const speed = this.keys['ShiftLeft'] ? 1.5 : 0.6;
+                    const speed = this.keys['ShiftLeft'] ? 2.0 : 0.8;
                     let moved = false;
                     if (this.keys['KeyW']) { this.player.mesh.translateZ(speed); moved = true; }
                     if (this.keys['KeyS']) { this.player.mesh.translateZ(-speed); moved = true; }
@@ -148,8 +124,9 @@
                     if (moved) { if(!this.player.actions.run.isRunning()) this.player.actions.run.play(); }
                     else if(this.player.actions.run) this.player.actions.run.stop();
 
-                    const camPos = new THREE.Vector3(0, 50, -120).applyMatrix4(this.player.mesh.matrixWorld);
-                    this.camera.position.lerp(camPos, 0.1);
+                    // Dynamic Camera Follow
+                    const camOffset = new THREE.Vector3(0, 60, -120).applyMatrix4(this.player.mesh.matrixWorld);
+                    this.camera.position.lerp(camOffset, 0.1);
                     this.camera.lookAt(this.player.mesh.position.clone().add(new THREE.Vector3(0, 20, 0)));
                 }
 
